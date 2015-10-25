@@ -1,7 +1,0 @@
-# This is a config file for CGI server
-
-root_directory: /home/alex/CGI/CGI/web
-
-log: /home/alex/CGI/CGI/log/logfile
-
-port: 3001
