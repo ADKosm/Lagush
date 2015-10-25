@@ -40,4 +40,17 @@ public:
 
 };
 
+class socket_reader {
+private:
+    const int BUFF_SIZE = 4048;
+    size_t pointer;
+    char * buffer;
+    int sock_fd;
+public:
+    socket_reader(int sock_f);
+    ~socket_reader();
+
+    char get();
+};
+
 #endif // HELPERS_H

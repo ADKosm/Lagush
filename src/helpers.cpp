@@ -68,3 +68,15 @@ file_helper::~file_helper() {
 error_helper::error_helper() {
 
 }
+
+// ---------- socket_reader -----------
+
+socket_reader::socket_reader(int sock_f) {
+    sock_fd = sock_f;
+    pointer = 0;
+    buffer = new char[BUFF_SIZE];
+}
+
+socket_reader::~socket_reader() {
+    delete[] buffer;
+}
