@@ -19,5 +19,6 @@
 #include <fstream>
 #include <map>
 #include <exception>
+#include <sstream>
 
 #endif // HEADERS_H

@@ -1,4 +1,5 @@
 #include "include/server.h"
+#include "include/request_strategy.h"
 
 #define LISTENQ 1024
 #define SA struct sockaddr
@@ -9,6 +10,7 @@ server::server() {
         log = new logger(conf_serv->get_param("log"));
         file_serv = new file_helper(conf_serv->get_param("root_directory"));
         err_serv = new error_helper;
+        mess_serv = new message_helper;
     } catch (std::runtime_error e) {
         std::cerr << "Something went wrong: " << e.what() << std::endl;
         exit(EXIT_FAILURE);
@@ -29,8 +31,6 @@ void server::start() {
     int listenfd /*слушающий*/, connfd;
     int port = conf_serv->get_iparam("port");
     struct sockaddr_in servaddr;
-    char buff[200];
-    time_t ticks;
 
     listenfd = socket(AF_INET, SOCK_STREAM, 0); // создание нового сокета
     // AF_INET - сокет для интернета
@@ -65,20 +65,14 @@ void server::handle_request(int connfd) {
 
     std::string m = "HTTP/1.1 200 OK\nContent-Length: " + std::to_string(hel.size()) + "\n\n" + hel;
 
-    char _b[50];
-    int _n;
-    std::string headers;
+    mess_serv->read_headers(connfd);
 
-    do {
-        _n = recv(connfd, _b, sizeof(_b)-1 , 0);
-        headers.insert(headers.end(), _b, _b+_n);
-    }while(_b[_n-4] != '\r' && _b[_n-3] != '\n' && _b[_n-2] != '\r' && _b[_n-1] != '\n');//_b[_n-1] != '\0');
+    request_strategy * strategy = request_strategy::get_strategy(mess_serv->get_head("method"));
 
-    std::cout << headers << std::endl;
-
-    std::cout << std::endl << "--------" << std::endl;
+    strategy->do_request(this, connfd);
 
     send(connfd, m.c_str(), m.size(), 0);
 
+    delete strategy;
     close(connfd);
 }
