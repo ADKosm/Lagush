@@ -9,7 +9,7 @@ server::server() {
         conf_serv = new config_helper;
         log = new logger(conf_serv->get_param("log"));
         file_serv = new file_helper(conf_serv->get_param("root_directory"));
-        err_serv = new error_helper;
+        err_serv = new error_helper(conf_serv->get_param("responses"));
         mess_serv = new message_helper;
     } catch (std::runtime_error e) {
         std::cerr << "Something went wrong: " << e.what() << std::endl;
@@ -71,7 +71,7 @@ void server::handle_request(int connfd) {
 
     strategy->do_request(this, connfd);
 
-    send(connfd, m.c_str(), m.size(), 0);
+    //send(connfd, m.c_str(), m.size(), 0);
 
     delete strategy;
     close(connfd);

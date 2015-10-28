@@ -6,7 +6,8 @@
 #include "helpers.h"
 
 class server {
-    friend class request_strategy;
+    friend class get_request;
+    friend class post_request;
 protected:
     int port;
     std::string root_path;

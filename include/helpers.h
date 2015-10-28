@@ -21,9 +21,18 @@ public:
 class file_helper {
 private:
     std::string root_dir;
+
+    std::string complete_path(std::string path);
 public:
     file_helper(std::string path);
     ~file_helper();
+
+    std::string status(int ercode);
+    std::string file_info(std::string path);
+
+    std::string choose_path(std::string path, int &ercode);
+
+    void send_data(std::string path, int fd);
 };
 
 // ----------------------------------------------
@@ -31,8 +40,12 @@ public:
 class error_helper {
 private:
 
+    static std::string responses_path;
 public:
-    error_helper();
+    error_helper(std::string p);
+    ~error_helper();
+
+    static std::string get_resp(std::string code);
 
 };
 
@@ -49,8 +62,6 @@ public:
     socket_reader(int sock_f);
     ~socket_reader();
 
-
-
     char get();
     std::string get_remain();
 };
@@ -60,15 +71,27 @@ public:
 class message_helper {
 private:
     std::string remains;
+
     std::map<std::string, std::string> headers;
 
     bool is_end(size_t point, std::string &s);
 public:
+    std::string response_headers; //TODO: перенести в private
     message_helper();
     ~message_helper();
+
+    static std::string end_of_headers;
+
     std::string get_headers(int connfd);
     void read_headers(int connfd);
     std::string get_head(std::string key);
+    std::string get_path();
+
+    message_helper * combine_headers(std::string part);
+    std::string server_info();
+
+    void send_headers(int connfd);
 };
+
 
 #endif // HELPERS_H
