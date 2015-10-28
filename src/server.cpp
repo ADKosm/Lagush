@@ -48,10 +48,19 @@ void server::start() {
     listen(listenfd, LISTENQ);
     // запускаем прослушку
 
+    int pid;
+
     for(;;) {
         connfd = accept(listenfd, (SA *)NULL, NULL);
 
-        handle_request(connfd);
+        if( (pid = fork()) == 0 ) {
+            close(listenfd);
+            handle_request(connfd);
+            close(connfd);
+            exit(0);
+        }
+
+        close(connfd);
         // обрабатываем
     }
 
@@ -61,9 +70,9 @@ void server::start() {
 void server::handle_request(int connfd) {
     std::cout << "New connection!" << std::endl;
 
-    std::string hel = "Hello, user!";
+    //std::string hel = "Hello, user!";
 
-    std::string m = "HTTP/1.1 200 OK\nContent-Length: " + std::to_string(hel.size()) + "\n\n" + hel;
+    //std::string m = "HTTP/1.1 200 OK\nContent-Length: " + std::to_string(hel.size()) + "\n\n" + hel;
 
     mess_serv->read_headers(connfd);
 
@@ -74,5 +83,4 @@ void server::handle_request(int connfd) {
     //send(connfd, m.c_str(), m.size(), 0);
 
     delete strategy;
-    close(connfd);
 }
