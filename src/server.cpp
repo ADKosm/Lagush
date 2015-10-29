@@ -70,10 +70,6 @@ void server::start() {
 void server::handle_request(int connfd) {
     std::cout << "New connection!" << std::endl;
 
-    //std::string hel = "Hello, user!";
-
-    //std::string m = "HTTP/1.1 200 OK\nContent-Length: " + std::to_string(hel.size()) + "\n\n" + hel;
-
     mess_serv->read_headers(connfd);
 
     request_strategy * strategy = request_strategy::get_strategy(mess_serv->get_head("method"));

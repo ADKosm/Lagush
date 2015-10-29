@@ -59,10 +59,10 @@ private:
     char * buffer;
     int sock_fd;
 public:
-    socket_reader(int sock_f);
+    socket_reader(int sock_f, bool &ok_flag);
     ~socket_reader();
 
-    char get();
+    char get(bool &ok_flag);
     std::string get_remain();
 };
 
@@ -70,6 +70,7 @@ public:
 
 class message_helper {
 private:
+    bool _is_ok;
     std::string remains;
 
     std::map<std::string, std::string> headers;
@@ -90,6 +91,7 @@ public:
     message_helper * combine_headers(std::string part);
     std::string server_info();
 
+    bool is_ok();
     void send_headers(int connfd);
 };
 

@@ -135,15 +135,17 @@ bool message_helper::is_end(size_t point, std::string &s) {
 }
 
 std::string message_helper::get_headers(int connfd) {
-    socket_reader reader(connfd);
+    socket_reader reader(connfd, _is_ok);
+    if(!_is_ok) exit(0); // считать хедеры не удалось - закрываем соединение
     std::string headers;
     size_t p = 0;
 
-    for(; p <= 3; p++) headers.push_back(reader.get());
+    for(; p <= 3; p++) headers.push_back(reader.get(_is_ok));
     p--;
 
     for(; !is_end(p, headers); p++) {
-        headers.push_back(reader.get());
+        headers.push_back(reader.get(_is_ok));
+        if(!_is_ok) break;
     }
 
     remains = reader.get_remain();
@@ -194,6 +196,10 @@ void message_helper::send_headers(int connfd) {
     response_headers.clear();
 }
 
+bool message_helper::is_ok() {
+    return _is_ok;
+}
+
 // --------- Error Helper ----------
 
 std::string error_helper::responses_path = "";
@@ -212,23 +218,26 @@ std::string error_helper::get_resp(std::string code) {
 
 // ---------- socket_reader -----------
 
-socket_reader::socket_reader(int sock_f) {
+socket_reader::socket_reader(int sock_f, bool &ok_flag) {
     sock_fd = sock_f;
     pointer = 0;
     buffer = new char[BUFF_SIZE];
     bytes = recv(sock_fd, buffer, BUFF_SIZE, 0);
+    ok_flag = (bytes > 0);
+    std::cout << "OK FLAG! = " << ok_flag << std::endl;
 }
 
 socket_reader::~socket_reader() {
     delete[] buffer;
 }
 
-char socket_reader::get() {
+char socket_reader::get(bool &ok_flag) {
     if(pointer == bytes) {
         pointer = 0;
         bytes = recv(sock_fd, buffer, BUFF_SIZE, 0);
     }
 
+    ok_flag = (bytes > 0);
     if(bytes <= 0) {
         return '\0';
     }
