@@ -103,6 +103,7 @@ void file_helper::send_data(std::string path, int fd) {
 
 std::string file_helper::choose_path(std::string path, int &ercode) {
     path = root_dir + path;
+    ercode = 0;
     struct stat buff;
     int st = stat(path.c_str(), &buff);
     if(st == 0 && S_ISREG(buff.st_mode)) {
@@ -113,6 +114,7 @@ std::string file_helper::choose_path(std::string path, int &ercode) {
         if(st == 0) {
             return index_path;
         } else {
+            ercode = 404;
             return error_helper::get_resp("404");
         }
     }
@@ -121,9 +123,11 @@ std::string file_helper::choose_path(std::string path, int &ercode) {
 // ------- Message Helper ---------
 
 std::string message_helper::end_of_headers = "\r\n";
+timeval message_helper::timelimit = {0, 0};
 
-message_helper::message_helper() {
-
+message_helper::message_helper(int timelim) {
+    message_helper::timelimit.tv_sec = timelim;
+    message_helper::timelimit.tv_usec = 0;
 }
 
 message_helper::~message_helper() {
@@ -222,9 +226,20 @@ socket_reader::socket_reader(int sock_f, bool &ok_flag) {
     sock_fd = sock_f;
     pointer = 0;
     buffer = new char[BUFF_SIZE];
-    bytes = recv(sock_fd, buffer, BUFF_SIZE, 0);
-    ok_flag = (bytes > 0);
-    std::cout << "OK FLAG! = " << ok_flag << std::endl;
+
+    fd_set rset;
+    FD_ZERO(&rset);
+    FD_SET(sock_fd, &rset);
+    int ready = select(sock_fd+1, &rset, NULL, NULL, &message_helper::timelimit);
+
+    if(ready == 0) {
+        std::cout << "Time is over!" << std::endl;
+        ok_flag = false; // истек лимит ожидания
+    } else {
+        bytes = recv(sock_fd, buffer, BUFF_SIZE, 0);
+
+        ok_flag = (bytes > 0);
+    }
 }
 
 socket_reader::~socket_reader() {

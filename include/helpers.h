@@ -69,6 +69,7 @@ public:
 // ----------------------------------------------
 
 class message_helper {
+    friend class socket_reader;
 private:
     bool _is_ok;
     std::string remains;
@@ -76,9 +77,11 @@ private:
     std::map<std::string, std::string> headers;
 
     bool is_end(size_t point, std::string &s);
+
+    static timeval timelimit;
 public:
     std::string response_headers; //TODO: перенести в private
-    message_helper();
+    message_helper(int timelim);
     ~message_helper();
 
     static std::string end_of_headers;
