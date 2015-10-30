@@ -98,5 +98,17 @@ public:
     void send_headers(int connfd);
 };
 
+// ----------------------------------------------
+
+class cgi_helper {
+private:
+    std::vector<std::string> extentions;
+public:
+    cgi_helper(std::string raw_ext);
+    ~cgi_helper();
+
+    bool is_cgi(std::string name);
+    void run_and_send(std::string path, int fd, message_helper * m_help);
+};
 
 #endif // HELPERS_H

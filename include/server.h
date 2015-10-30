@@ -17,6 +17,7 @@ protected:
     file_helper* file_serv;
     message_helper* mess_serv;
     error_helper* err_serv;
+    cgi_helper* cgi_serv;
 
     void handle_request(int connfd);
 

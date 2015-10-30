@@ -99,10 +99,12 @@ void file_helper::send_data(std::string path, int fd) {
         }
         write_bytes = 0;
     }
+    close(filefd);
 }
 
 std::string file_helper::choose_path(std::string path, int &ercode) {
     path = root_dir + path;
+    path = path.substr(0, path.find_first_of('?'));
     ercode = 0;
     struct stat buff;
     int st = stat(path.c_str(), &buff);
@@ -264,4 +266,74 @@ std::string socket_reader::get_remain() {
     std::string result;
     result.append(buffer + pointer, buffer + bytes);
     return result;
+}
+
+// ------------- cgi_helper --------------------
+
+cgi_helper::cgi_helper(std::string raw_ext) {
+    std::istringstream iss(raw_ext);
+    std::string ext;
+    while(iss >> ext) {
+        extentions.push_back(ext);
+    }
+}
+
+cgi_helper::~cgi_helper() {
+
+}
+
+bool cgi_helper::is_cgi(std::string name) {
+    for(unsigned int i = 0; i < extentions.size(); i++) {
+        if(name.substr(name.size() - extentions[i].size()) == extentions[i]) return true;
+    }
+    return false;
+}
+
+void cgi_helper::run_and_send(std::string path, int fd, message_helper * m_help) {
+    std::string r = m_help->get_head("method");
+    std::string args = r.substr(r.find_first_of('?')+1);
+    args = args.substr(0, args.size() - std::string("HTTP/1.1\r\n").size());
+    std::string method = std::string("REQUEST_METHOD=")+r.substr(0, r.find(' '));
+    std::string query_string = std::string("QUERY_STRING=")+args;
+    const char * const env_var[3] = { // TODO: добавить больше переменных среды
+        method.c_str(),
+        query_string.c_str(),
+        NULL
+    };
+
+    int readfd[2];
+    int cgipid;
+
+    pipe(readfd);
+
+    if( (cgipid = fork()) == 0 ) { // child
+        close(readfd[0]);
+        dup2(readfd[1], 1); // перенаправляем вывод
+        execle(path.c_str(), path.c_str(), NULL, env_var);
+
+        std::cout << "Launching CGI-script is failed" << std::endl;
+        close(readfd[1]);
+        exit(0);
+    } else { // parent // TODO: вынести перегон данных из одного дескриптора в другой в отдельный метод
+        close(readfd[1]);
+
+        std::string ok_stat = "HTTP/1.1 200 OK"; // TODO: сделать нормальную проверку
+        unsigned int b = 0;
+        while(b < ok_stat.size()) b += send(fd, ok_stat.c_str() + b, ok_stat.size() - b, 0);
+
+        int BLOCK_SIZE = 8192;
+        char buffer[BLOCK_SIZE];
+        int read_bytes = 0;
+        int write_bytes = 0;
+
+        while( (read_bytes = read(readfd[0], buffer, BLOCK_SIZE)) > 0 ) {
+            while(write_bytes < read_bytes) {
+                write_bytes += send(fd, buffer + write_bytes, read_bytes - write_bytes , 0);
+            }
+            write_bytes = 0;
+        }
+    }
+
+    close(readfd[0]);
+
 }
