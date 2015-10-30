@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <time.h>
+#include <signal.h>
 
 #include <sys/stat.h>
 #include <unistd.h>

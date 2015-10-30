@@ -11,6 +11,12 @@ server::server() {
         file_serv = new file_helper(conf_serv->get_param("root_directory"));
         err_serv = new error_helper(conf_serv->get_param("responses"));
         mess_serv = new message_helper(conf_serv->get_iparam("timelimit"));
+
+        struct sigaction arg;
+        arg.sa_handler = SIG_IGN;
+        arg.sa_flags = SA_NOCLDWAIT;
+        sigaction(SIGCHLD, &arg, NULL); // чтобы форкнутые процессы не засоряли таблицу
+
     } catch (std::runtime_error e) {
         std::cerr << "Something went wrong: " << e.what() << std::endl;
         exit(EXIT_FAILURE);
