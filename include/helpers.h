@@ -102,9 +102,19 @@ public:
 
 class cgi_helper {
 private:
+    std::string jail_path;
+    std::set<std::string> prepared;
     std::vector<std::string> extentions;
+
+    void prepare_jail(std::string path);
+    std::vector<std::string> get_dependencies(std::string path);
+    std::string get_real_path(std::string path);
+    void copy_lib(std::string from, std::string to);
+    std::string isolate(std::string path);
+    void clear(std::string path);
+
 public:
-    cgi_helper(std::string raw_ext);
+    cgi_helper(std::string raw_ext, std::string jail);
     ~cgi_helper();
 
     bool is_cgi(std::string name);

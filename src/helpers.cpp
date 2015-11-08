@@ -270,12 +270,15 @@ std::string socket_reader::get_remain() {
 
 // ------------- cgi_helper --------------------
 
-cgi_helper::cgi_helper(std::string raw_ext) {
+cgi_helper::cgi_helper(std::string raw_ext, std::string jail) {
     std::istringstream iss(raw_ext);
     std::string ext;
     while(iss >> ext) {
         extentions.push_back(ext);
     }
+
+    jail_path = jail;
+    prepare_jail(jail_path);
 }
 
 cgi_helper::~cgi_helper() {
@@ -287,6 +290,46 @@ bool cgi_helper::is_cgi(std::string name) {
         if(name.substr(name.size() - extentions[i].size()) == extentions[i]) return true;
     }
     return false;
+}
+
+std::string cgi_helper::isolate(std::string path) {
+    std::cout << "Isolate begin" << std::endl;
+    int user_id = getuid();
+    if(user_id == 0) {
+        std::cout << "Don't launch server with root permitions!" << std::endl;
+        return path;
+    }
+    int st = setuid(0);
+    if(st == -1) {
+        std::cout << "Impossible to create jail! Please set SUID flag on this server" << std::endl;
+        return path;
+    }
+
+    std::string path_in_jail = path.substr(path.rfind('/'));
+    copy_lib(path, jail_path + path_in_jail);
+
+//    std::cout << path_in_jail << std::endl;
+
+    if(prepared.count(path) > 0) return path_in_jail;
+
+    std::string shebang = get_real_path(path);
+    if(shebang != path) copy_lib(shebang, jail_path + shebang);
+    auto depend = get_dependencies(path);
+    for(auto lib : depend) copy_lib(lib, jail_path + lib);
+
+    prepared.insert(path);
+
+    chroot(jail_path.c_str());
+    chdir("/");
+
+    setuid(user_id);
+
+    return path_in_jail;
+}
+
+void cgi_helper::clear(std::string path) {
+    std::string path_in_jail = jail_path + path.substr(path.rfind('/'));
+    unlink(path_in_jail.c_str());
 }
 
 void cgi_helper::run_and_send(std::string path, int fd, message_helper * m_help) {
@@ -308,32 +351,132 @@ void cgi_helper::run_and_send(std::string path, int fd, message_helper * m_help)
 
     if( (cgipid = fork()) == 0 ) { // child
         close(readfd[0]);
+
+        path = isolate(path);
+
         dup2(readfd[1], 1); // перенаправляем вывод
         execle(path.c_str(), path.c_str(), NULL, env_var);
 
         std::cout << "Launching CGI-script is failed" << std::endl;
         close(readfd[1]);
         exit(0);
-    } else { // parent // TODO: вынести перегон данных из одного дескриптора в другой в отдельный метод
-        close(readfd[1]);
+    }
+    // parent // TODO: вынести перегон данных из одного дескриптора в другой в отдельный метод
+    close(readfd[1]);
 
-        std::string ok_stat = "HTTP/1.1 200 OK"; // TODO: сделать нормальную проверку
-        unsigned int b = 0;
-        while(b < ok_stat.size()) b += send(fd, ok_stat.c_str() + b, ok_stat.size() - b, 0);
+    std::string ok_stat = "HTTP/1.1 200 OK"; // TODO: сделать нормальную проверку
+    unsigned int b = 0;
+    while(b < ok_stat.size()) b += send(fd, ok_stat.c_str() + b, ok_stat.size() - b, 0);
 
-        int BLOCK_SIZE = 8192;
-        char buffer[BLOCK_SIZE];
-        int read_bytes = 0;
-        int write_bytes = 0;
+    int BLOCK_SIZE = 8192;
+    char buffer[BLOCK_SIZE];
+    int read_bytes = 0;
+    int write_bytes = 0;
 
-        while( (read_bytes = read(readfd[0], buffer, BLOCK_SIZE)) > 0 ) {
-            while(write_bytes < read_bytes) {
-                write_bytes += send(fd, buffer + write_bytes, read_bytes - write_bytes , 0);
-            }
-            write_bytes = 0;
+    while( (read_bytes = read(readfd[0], buffer, BLOCK_SIZE)) > 0 ) {
+        while(write_bytes < read_bytes) {
+            write_bytes += send(fd, buffer + write_bytes, read_bytes - write_bytes , 0);
         }
+        write_bytes = 0;
     }
 
     close(readfd[0]);
 
+    wait(NULL);
+    clear(path);
+}
+
+void cgi_helper::prepare_jail(std::string path) {
+    std::vector<std::string> programs = {
+         "/bin/bash",
+         "/bin/cp",
+         "/usr/bin/dircolors",
+         "/bin/ls",
+         "/bin/mkdir",
+         "/bin/mv",
+         "/bin/rm",
+         "/bin/rmdir",
+         "/bin/sh"
+    };
+    for(auto prog : programs) {
+        copy_lib(prog, path+prog);
+        prepared.insert(prog);
+        auto depend = get_dependencies(prog);
+        for(auto lib : depend) {
+            copy_lib(lib, path+lib);
+        }
+    }
+}
+
+void cgi_helper::copy_lib(std::string from, std::string to) {
+    struct stat buf;
+    int status = stat(to.c_str(), &buf);
+    if(status == 0) return;
+    size_t point = 0;
+    while( (point = to.find('/', point+1)) != std::string::npos ) {
+        std::string p = to.substr(0, point);
+        if(stat(p.c_str(), &buf) == 0) continue; // тут происходит что-то странное
+        mkdir(p.c_str(), 0777); // все файлы в jail, а значит спокойно выдаем все права
+    }
+    int tofd = creat(to.c_str(), 0777);
+    int fromfd = open(from.c_str(), O_RDONLY);
+
+    status = stat(from.c_str(), &buf);
+
+    sendfile(tofd, fromfd, 0, buf.st_size);
+
+    close(tofd);
+    close(fromfd);
+}
+
+std::string cgi_helper::get_real_path(std::string path) {
+    std::ifstream file(path);
+    char iden[3];
+    file >> iden[0] >> iden[1];
+    iden[2] = '\0';
+    if(std::string(iden) == "#!") { // if shebang
+        std::string res;
+        getline(file, res);
+        file.close();
+        return res.substr(0, res.find_first_of(' '));
+    }
+    file.close();
+    return path;
+}
+
+std::vector<std::string> cgi_helper::get_dependencies(std::string path) {
+    path = get_real_path(path);
+
+    int output[2];
+    pipe(output);
+
+    pid_t id = fork();
+    if(id == 0) { // child
+        close(output[0]);
+        dup2(output[1], 1);
+
+        execlp("ldd", "ldd", path.c_str(), NULL);
+
+    }
+    close(output[1]);
+    std::string _depend;
+    char buffer[4096];
+    int read_bytes = 0;
+    while((read_bytes = read(output[0], buffer, sizeof(buffer)-1)) > 0) {
+        buffer[read_bytes] = '\0';
+        _depend += std::string(buffer);
+    }
+    close(output[0]);
+
+    std::istringstream iss(_depend);
+    std::vector<std::string> result;
+    std::string lib;
+    while(getline(iss, lib)) {
+        size_t beg = lib.find_first_of('/');
+        if(beg != std::string::npos) {
+            size_t end = lib.find(' ', beg);
+            result.push_back(lib.substr(beg, end - beg));
+        }
+    }
+    return result;
 }

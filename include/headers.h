@@ -12,8 +12,10 @@
 #include <arpa/inet.h>
 #include <time.h>
 #include <signal.h>
+#include <sys/wait.h>
 
 #include <sys/stat.h>
+#include <sys/sendfile.h>
 #include <unistd.h>
 #include <fcntl.h>
 
@@ -26,5 +28,7 @@
 #include <map>
 #include <exception>
 #include <sstream>
+#include <set>
+
 
 #endif // HEADERS_H
