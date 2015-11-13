@@ -13,6 +13,7 @@
 #include <time.h>
 #include <signal.h>
 #include <sys/wait.h>
+#include <dirent.h>
 
 #include <sys/stat.h>
 #include <sys/sendfile.h>
@@ -29,6 +30,6 @@
 #include <exception>
 #include <sstream>
 #include <set>
-
+#include <utility>
 
 #endif // HEADERS_H

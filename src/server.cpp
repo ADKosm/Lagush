@@ -11,8 +11,10 @@ server::server() {
         file_serv = new file_helper(conf_serv->get_param("root_directory"));
         err_serv = new error_helper(conf_serv->get_param("responses"));
         mess_serv = new message_helper(conf_serv->get_iparam("timelimit"));
-        cgi_serv = new cgi_helper(conf_serv->get_param("cgi"),
-                                  conf_serv->get_param("jail"));
+        cgi_serv = new cgi_helper(conf_serv->get_param("cgi"));
+        if(conf_serv->get_param("jail_enable") == "true") {
+            cgi_serv->set_jail(conf_serv->get_param("jail"));
+        }
 
         struct sigaction arg;
         arg.sa_handler = SIG_IGN;

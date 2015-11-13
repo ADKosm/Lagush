@@ -270,19 +270,24 @@ std::string socket_reader::get_remain() {
 
 // ------------- cgi_helper --------------------
 
-cgi_helper::cgi_helper(std::string raw_ext, std::string jail) {
+cgi_helper::cgi_helper(std::string raw_ext) {
     std::istringstream iss(raw_ext);
     std::string ext;
     while(iss >> ext) {
         extentions.push_back(ext);
     }
 
-    jail_path = jail;
-    prepare_jail(jail_path);
+    jail_enable = false;
 }
 
 cgi_helper::~cgi_helper() {
 
+}
+
+void cgi_helper::set_jail(std::string jail) {
+    jail_enable = true;
+    jail_path = jail;
+    prepare_jail(jail_path);
 }
 
 bool cgi_helper::is_cgi(std::string name) {
@@ -293,7 +298,7 @@ bool cgi_helper::is_cgi(std::string name) {
 }
 
 std::string cgi_helper::isolate(std::string path) {
-    std::cout << "Isolate begin" << std::endl;
+    if(!jail_enable) return path;
     int user_id = getuid();
     if(user_id == 0) {
         std::cout << "Don't launch server with root permitions!" << std::endl;
@@ -305,19 +310,7 @@ std::string cgi_helper::isolate(std::string path) {
         return path;
     }
 
-    std::string path_in_jail = path.substr(path.rfind('/'));
-    copy_lib(path, jail_path + path_in_jail);
-
-//    std::cout << path_in_jail << std::endl;
-
-    if(prepared.count(path) > 0) return path_in_jail;
-
-    std::string shebang = get_real_path(path);
-    if(shebang != path) copy_lib(shebang, jail_path + shebang);
-    auto depend = get_dependencies(path);
-    for(auto lib : depend) copy_lib(lib, jail_path + lib);
-
-    prepared.insert(path);
+    std::string path_in_jail = prepare_script(path);
 
     chroot(jail_path.c_str());
     chdir("/");
@@ -327,9 +320,80 @@ std::string cgi_helper::isolate(std::string path) {
     return path_in_jail;
 }
 
+std::string cgi_helper::prepare_script(std::string path) {
+
+    std::string path_in_jail = path.substr(path.rfind('/')); // копирование самого скрипта
+    copy_lib(path, jail_path + path_in_jail);
+
+    if(prepared.count(path) > 0) return path_in_jail; // TODO: на данный момент не работает - доделать
+
+    std::string shebang = get_real_path(path);
+    if(shebang != path) copy_lib(shebang, jail_path + shebang); // копирование интерпретатора
+    auto depend = get_dependencies(path);                       // и библиотек для него
+    for(auto lib : depend) copy_lib(lib, jail_path + lib);
+
+    if(shebang != path) { // подтащить соответствующие библиотеки для скрипта
+
+        std::vector<std::string> names;
+        names.push_back(shebang.substr(shebang.rfind('/')+1));
+
+        struct stat sb;
+        char * linkname;
+        if( lstat(shebang.c_str(), &sb) == 0) {
+            linkname = new char[sb.st_size + 1];
+            size_t r = readlink(shebang.c_str(), linkname, sb.st_size + 1);
+            linkname[r] = '\0';
+            names.push_back(std::string(linkname));
+            delete[] linkname;
+        }
+
+        std::vector<std::string> dirs { // TODO: прикрутить больше возможных папок с библиотеками
+            "/usr/lib",
+            "/usr/share"
+        };
+
+
+
+        for(std::string dir : dirs) {
+            for(std::string name : names) {
+                copy_dir(dir+"/"+name, jail_path + dir+"/"+name );
+            }
+        }
+    }
+
+    return path_in_jail;
+}
+
+void cgi_helper::copy_dir(std::string from, std::string to) {
+    std::cout << from << ' ' << to << std::endl;
+
+    DIR * folder = opendir(from.c_str());
+    struct dirent * file;
+
+    if(folder == NULL) return;
+
+    mkdir(to.c_str(), 0777);
+
+    struct stat file_info;
+    while( (file = readdir(folder)) != NULL ) {
+        std::string cur_path;
+        cur_path.append(from);
+        cur_path.append("/");
+        cur_path.append(file->d_name);
+
+        int res = stat(cur_path.c_str(), &file_info);
+        if(S_ISDIR(file_info.st_mode)) {
+            if( std::string(file->d_name) != "." && std::string(file->d_name) != ".."  ) copy_dir(cur_path, (to + "/" + std::string(file->d_name)) );
+        } else {
+            copy_lib(cur_path, (to + "/" + std::string(file->d_name)) );
+        }
+    }
+}
+
 void cgi_helper::clear(std::string path) {
+    if(!jail_enable) return;
     std::string path_in_jail = jail_path + path.substr(path.rfind('/'));
-    unlink(path_in_jail.c_str());
+    int status = unlink(path_in_jail.c_str());
 }
 
 void cgi_helper::run_and_send(std::string path, int fd, message_helper * m_help) {
@@ -338,9 +402,11 @@ void cgi_helper::run_and_send(std::string path, int fd, message_helper * m_help)
     args = args.substr(0, args.size() - std::string("HTTP/1.1\r\n").size());
     std::string method = std::string("REQUEST_METHOD=")+r.substr(0, r.find(' '));
     std::string query_string = std::string("QUERY_STRING=")+args;
-    const char * const env_var[3] = { // TODO: добавить больше переменных среды
+    std::string home = "HOME=/home";
+    const char * const env_var[4] = { // TODO: добавить больше переменных среды
         method.c_str(),
         query_string.c_str(),
+        home.c_str(),
         NULL
     };
 
@@ -398,6 +464,12 @@ void cgi_helper::prepare_jail(std::string path) {
          "/bin/rmdir",
          "/bin/sh"
     };
+
+    std::vector<std::string> dirs {
+      "/home",
+      "/tmp"
+    };
+
     for(auto prog : programs) {
         copy_lib(prog, path+prog);
         prepared.insert(prog);
@@ -406,7 +478,33 @@ void cgi_helper::prepare_jail(std::string path) {
             copy_lib(lib, path+lib);
         }
     }
+    copy_devices(path);
+    for(auto dir : dirs) mkdir((path + dir).c_str(), 0777);
 }
+
+void cgi_helper::copy_devices(std::string path) {
+    pid_t id = fork();
+    if(id == 0) {
+        mkdir((path+"/dev").c_str(), 0777);
+        std::vector< std::string > devices {
+            "/dev/random",
+            "/dev/urandom",
+            "/dev/zero",
+            "/dev/null",
+            "/dev/tty"
+        };
+        int user_id = getuid();
+        setuid(0);
+        for(auto dev : devices) {
+            struct stat buf;
+            stat(dev.c_str(), &buf);
+            mknod( (path+dev).c_str(), S_IFCHR | 0777, buf.st_rdev );
+        }
+        setuid(user_id);
+        exit(0);
+    }
+}
+
 
 void cgi_helper::copy_lib(std::string from, std::string to) {
     struct stat buf;

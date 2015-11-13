@@ -105,19 +105,24 @@ private:
     std::string jail_path;
     std::set<std::string> prepared;
     std::vector<std::string> extentions;
+    bool jail_enable;
 
-    void prepare_jail(std::string path);
     std::vector<std::string> get_dependencies(std::string path);
     std::string get_real_path(std::string path);
-    void copy_lib(std::string from, std::string to);
     std::string isolate(std::string path);
+    void prepare_jail(std::string path);
+    std::string prepare_script(std::string path);
+    void copy_lib(std::string from, std::string to);
+    void copy_dir(std::string from, std::string to);
+    void copy_devices(std::string path);
     void clear(std::string path);
 
 public:
-    cgi_helper(std::string raw_ext, std::string jail);
+    cgi_helper(std::string raw_ext);
     ~cgi_helper();
 
     bool is_cgi(std::string name);
+    void set_jail(std::string jail);
     void run_and_send(std::string path, int fd, message_helper * m_help);
 };
 
