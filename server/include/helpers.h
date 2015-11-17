@@ -2,6 +2,9 @@
 #define HELPERS_H
 
 #include "headers.h"
+#include "include/shared_allocator.h"
+
+#define shared_string std::basic_string<char, std::char_traits<char>, mmap_allocator<char> >
 
 class config_helper {
 private:
@@ -103,18 +106,20 @@ public:
 class cgi_helper {
 private:
     std::string jail_path;
-    std::set<std::string> prepared;
+    std::vector<shared_string, mmap_allocator<shared_string> > prepared;
     std::vector<std::string> extentions;
     bool jail_enable;
 
     std::vector<std::string> get_dependencies(std::string path);
     std::string get_real_path(std::string path);
     std::string isolate(std::string path);
-    void prepare_jail(std::string path);
     std::string prepare_script(std::string path);
+    void prepare_jail(std::string path);
     void copy_lib(std::string from, std::string to);
     void copy_dir(std::string from, std::string to);
     void copy_devices(std::string path);
+    void cgi_exec(std::string path, const char * const * env);
+    void identificate(pid_t pid);
     void clear(std::string path);
 
 public:

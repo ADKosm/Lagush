@@ -1,5 +1,4 @@
 #include "include/helpers.h"
-
 // ------- Config Helper ----------
 
 config_helper::config_helper() {
@@ -299,25 +298,18 @@ bool cgi_helper::is_cgi(std::string name) {
 
 std::string cgi_helper::isolate(std::string path) {
     if(!jail_enable) return path;
-    int user_id = getuid();
-    if(user_id == 0) {
-        std::cout << "Don't launch server with root permitions!" << std::endl;
-        return path;
-    }
-    int st = setuid(0);
-    if(st == -1) {
-        std::cout << "Impossible to create jail! Please set SUID flag on this server" << std::endl;
-        return path;
-    }
 
     std::string path_in_jail = prepare_script(path);
 
-    chroot(jail_path.c_str());
-    chdir("/");
-
-    setuid(user_id);
-
     return path_in_jail;
+}
+
+void cgi_helper::cgi_exec(std::string path, const char * const *env) {
+    if(jail_enable) {
+        execle("cgi_module", "cgi_module", "0", jail_path.c_str(), path.c_str(), NULL, env);
+    } else {
+        execle(path.c_str(), path.c_str(), NULL, env);
+    }
 }
 
 std::string cgi_helper::prepare_script(std::string path) {
@@ -325,7 +317,12 @@ std::string cgi_helper::prepare_script(std::string path) {
     std::string path_in_jail = path.substr(path.rfind('/')); // копирование самого скрипта
     copy_lib(path, jail_path + path_in_jail);
 
-    if(prepared.count(path) > 0) return path_in_jail; // TODO: на данный момент не работает - доделать
+    std::cout << "AAAAYYYAAAAA!!: " << std::endl;
+    for(auto i : prepared) {
+        std::cout << i << std::endl;
+    }
+
+    if(std::count(prepared.begin(), prepared.end(), shared_string(path.c_str())) > 0) return path_in_jail; // TODO: на данный момент не работает - доделать
 
     std::string shebang = get_real_path(path);
     if(shebang != path) copy_lib(shebang, jail_path + shebang); // копирование интерпретатора
@@ -360,6 +357,8 @@ std::string cgi_helper::prepare_script(std::string path) {
             }
         }
     }
+
+    prepared.push_back(shared_string(path.c_str()));
 
     return path_in_jail;
 }
@@ -396,6 +395,27 @@ void cgi_helper::clear(std::string path) {
     int status = unlink(path_in_jail.c_str());
 }
 
+void cgi_helper::identificate(pid_t pid) {
+    if(jail_enable) {
+        sigset_t sigset;
+        siginfo_t sig;
+        sigemptyset(&sigset);
+        sigaddset(&sigset, SIGUSR1);
+        sigprocmask(SIG_BLOCK, &sigset, NULL);
+
+        struct timespec limit;
+        limit.tv_sec = 10; // 10 секунд на подумать
+        limit.tv_nsec = 0;
+
+        int status = sigtimedwait(&sigset, &sig, &limit);
+        if(status == -1) {
+            std::cout << "Can't launch cgi_script! Cgi_module is not responding" << std::endl;
+            exit(0);
+        }
+        kill(pid, SIGUSR1);
+    }
+}
+
 void cgi_helper::run_and_send(std::string path, int fd, message_helper * m_help) {
     std::string r = m_help->get_head("method");
     std::string args = r.substr(r.find_first_of('?')+1);
@@ -415,13 +435,14 @@ void cgi_helper::run_and_send(std::string path, int fd, message_helper * m_help)
 
     pipe(readfd);
 
+    path = isolate(path);
+
     if( (cgipid = fork()) == 0 ) { // child
         close(readfd[0]);
 
-        path = isolate(path);
-
         dup2(readfd[1], 1); // перенаправляем вывод
-        execle(path.c_str(), path.c_str(), NULL, env_var);
+
+        cgi_exec(path, env_var);
 
         std::cout << "Launching CGI-script is failed" << std::endl;
         close(readfd[1]);
@@ -429,6 +450,8 @@ void cgi_helper::run_and_send(std::string path, int fd, message_helper * m_help)
     }
     // parent // TODO: вынести перегон данных из одного дескриптора в другой в отдельный метод
     close(readfd[1]);
+    
+    identificate(cgipid);
 
     std::string ok_stat = "HTTP/1.1 200 OK"; // TODO: сделать нормальную проверку
     unsigned int b = 0;
@@ -472,7 +495,7 @@ void cgi_helper::prepare_jail(std::string path) {
 
     for(auto prog : programs) {
         copy_lib(prog, path+prog);
-        prepared.insert(prog);
+        prepared.push_back(shared_string(prog.c_str()));
         auto depend = get_dependencies(prog);
         for(auto lib : depend) {
             copy_lib(lib, path+lib);
@@ -483,26 +506,13 @@ void cgi_helper::prepare_jail(std::string path) {
 }
 
 void cgi_helper::copy_devices(std::string path) {
+    if(!jail_enable) return;
     pid_t id = fork();
     if(id == 0) {
-        mkdir((path+"/dev").c_str(), 0777);
-        std::vector< std::string > devices {
-            "/dev/random",
-            "/dev/urandom",
-            "/dev/zero",
-            "/dev/null",
-            "/dev/tty"
-        };
-        int user_id = getuid();
-        setuid(0);
-        for(auto dev : devices) {
-            struct stat buf;
-            stat(dev.c_str(), &buf);
-            mknod( (path+dev).c_str(), S_IFCHR | 0777, buf.st_rdev );
-        }
-        setuid(user_id);
+        execle("cgi_module", "cgi_module", "1", jail_path.c_str(), path.c_str(), NULL, environ);
         exit(0);
     }
+    identificate(id);
 }
 
 

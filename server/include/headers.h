@@ -14,6 +14,8 @@
 #include <signal.h>
 #include <sys/wait.h>
 #include <dirent.h>
+#include <sys/mman.h>
+#include <stddef.h>
 
 #include <sys/stat.h>
 #include <sys/sendfile.h>
@@ -22,6 +24,9 @@
 
 #include <stdlib.h>
 
+#include <functional>
+#include <limits>
+#include <iterator>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -31,5 +36,6 @@
 #include <sstream>
 #include <set>
 #include <utility>
+#include <algorithm>
 
 #endif // HEADERS_H
