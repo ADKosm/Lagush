@@ -79,7 +79,7 @@ void server::start() {
 
 
 void server::handle_request(int connfd) {
-    std::cout << "New connection!" << std::endl;
+    std::cout << "New connection (" << connfd << ')' << std::endl;
 
     mess_serv->read_headers(connfd);
 

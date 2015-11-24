@@ -32,7 +32,7 @@ void signal_identificate() {
     int status = sigtimedwait(&sigset, &sig, &limit);
 
     if(status == -1) {
-        std::cout << "Can't launch cgi_script! Server is not responding " << std::endl;
+        std::cerr << "Can't launch cgi_script! Server is not responding " << std::endl;
         exit(0);
     }
 }
@@ -43,12 +43,12 @@ int main(int argc, char ** argv) {
 
     int user_id = getuid();
     if(user_id == 0) {
-        std::cout << "Don't launch server with root permitions!" << std::endl;
+        std::cerr << "Don't launch server with root permitions!" << std::endl;
         exit(0);
     }
     int st = setuid(0);
     if(st == -1) {
-        std::cout << "Impossible to create jail! Please set SUID flag on this server" << std::endl;
+        std::cerr << "Impossible to create jail! Please set SUID flag on this server" << std::endl;
         exit(0);
     }
 
@@ -57,7 +57,6 @@ int main(int argc, char ** argv) {
     std::string path_to_real_exe;
     std::string path_to_real_pexe;
 
-    struct stat sb;
     char linkname[PATH_MAX+1];
     size_t r = readlink(path_to_lexe.c_str(), linkname, PATH_MAX+1);
     linkname[r] = '\0';
@@ -67,6 +66,7 @@ int main(int argc, char ** argv) {
     path_to_real_pexe = std::string(linkname);
 
     if(path_to_real_exe.substr(0, path_to_real_exe.rfind('/')) != path_to_real_pexe.substr(0, path_to_real_pexe.rfind('/'))) {
+        std::cerr << "Only original server can launch this module!" << std::endl;
         exit(0);
     }
 
