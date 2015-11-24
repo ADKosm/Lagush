@@ -18,7 +18,6 @@ HEADERS += \
     include/logger.h \
     include/headers.h \
     include/helpers.h \
-    include/request_strategy.h \
-    include/shared_allocator.h
+    include/request_strategy.h
 
 

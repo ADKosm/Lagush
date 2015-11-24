@@ -135,6 +135,7 @@ message_helper::~message_helper() {
 
 }
 
+
 bool message_helper::is_end(size_t point, std::string &s) {
     return ( s[point-3] == '\r' && s[point-2] == '\n' && s[point-1] == '\r' && s[point] == '\n' );
 }
@@ -317,13 +318,6 @@ std::string cgi_helper::prepare_script(std::string path) {
     std::string path_in_jail = path.substr(path.rfind('/')); // копирование самого скрипта
     copy_lib(path, jail_path + path_in_jail);
 
-    std::cout << "AAAAYYYAAAAA!!: " << std::endl;
-    for(auto i : prepared) {
-        std::cout << i << std::endl;
-    }
-
-    if(std::count(prepared.begin(), prepared.end(), shared_string(path.c_str())) > 0) return path_in_jail; // TODO: на данный момент не работает - доделать
-
     std::string shebang = get_real_path(path);
     if(shebang != path) copy_lib(shebang, jail_path + shebang); // копирование интерпретатора
     auto depend = get_dependencies(path);                       // и библиотек для него
@@ -337,7 +331,7 @@ std::string cgi_helper::prepare_script(std::string path) {
         struct stat sb;
         char * linkname;
         if( lstat(shebang.c_str(), &sb) == 0) {
-            linkname = new char[sb.st_size + 1];
+            linkname = new char[sb.st_size + 1]; // TODO: возможно не работает
             size_t r = readlink(shebang.c_str(), linkname, sb.st_size + 1);
             linkname[r] = '\0';
             names.push_back(std::string(linkname));
@@ -358,7 +352,6 @@ std::string cgi_helper::prepare_script(std::string path) {
         }
     }
 
-    prepared.push_back(shared_string(path.c_str()));
 
     return path_in_jail;
 }
@@ -408,6 +401,7 @@ void cgi_helper::identificate(pid_t pid) {
         limit.tv_nsec = 0;
 
         int status = sigtimedwait(&sigset, &sig, &limit);
+
         if(status == -1) {
             std::cout << "Can't launch cgi_script! Cgi_module is not responding" << std::endl;
             exit(0);
@@ -495,7 +489,6 @@ void cgi_helper::prepare_jail(std::string path) {
 
     for(auto prog : programs) {
         copy_lib(prog, path+prog);
-        prepared.push_back(shared_string(prog.c_str()));
         auto depend = get_dependencies(prog);
         for(auto lib : depend) {
             copy_lib(lib, path+lib);
