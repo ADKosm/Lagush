@@ -18,7 +18,7 @@ void get_request::do_request(server *serv, int connfd) {
     std::string path = serv->file_serv->choose_path(serv->mess_serv->get_path(), ercode);
 
     if(serv->cgi_serv->is_cgi(path)) { // cgi script
-        serv->cgi_serv->run_and_send(path, connfd, serv->mess_serv);
+        serv->cgi_serv->run_and_send(path, connfd, serv->mess_serv, false);
     } else { // static page
         serv->mess_serv
                 ->combine_headers(serv->file_serv->status(ercode))
@@ -39,4 +39,7 @@ void post_request::do_request(server *serv, int connfd) {
 
     std::cout << "Post request: " << path << ' ' << len << std::endl;
 
+    if(serv->cgi_serv->is_cgi(path)) {
+        serv->cgi_serv->run_and_send(path, connfd, serv->mess_serv, true);
+    }
 }

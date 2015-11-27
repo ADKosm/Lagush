@@ -98,6 +98,7 @@ public:
     void send_headers(int connfd);
     void send_from_fd(int fd, int sock);
     void send_string(std::string text, int sock);
+    void send_post_data(int sock, int fd);
 };
 
 // ----------------------------------------------
@@ -136,7 +137,7 @@ public:
 
     bool is_cgi(std::string name);
     void set_jail(std::string jail);
-    void run_and_send(std::string path, int fd, message_helper * m_help);
+    void run_and_send(std::string path, int fd, message_helper * m_help, bool post);
 };
 
 #endif // HELPERS_H

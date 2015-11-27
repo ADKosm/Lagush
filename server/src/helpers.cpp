@@ -225,6 +225,29 @@ void message_helper::send_string(std::string text, int sock) {
     while(b < text.size()) b += send(sock, text.c_str() + b, text.size() - b, 0);
 }
 
+void message_helper::send_post_data(int sock, int fd) {
+    unsigned int b = 0;
+    while(b < remains.size()) b += write(fd, remains.c_str() + b, remains.size() - b);
+    uint64_t size = atoll(get_head("Content-Length").c_str());
+    std::cout << size << ' ' << remains << ' ' << remains.size() << std::endl;
+    size-=remains.size();
+
+    uint64_t write_bytes = 0;
+    uint64_t read_bytes = 0;
+    uint64_t all_bytes = 0;
+    int BLOCK_SIZE = 8192;
+    char buffer[BLOCK_SIZE];
+
+    while( all_bytes < size ) {
+        read_bytes = recv(sock, buffer, BLOCK_SIZE, 0);
+        all_bytes += read_bytes;
+        while (write_bytes < read_bytes ) {
+            write_bytes += write(fd, buffer + write_bytes, read_bytes - write_bytes);
+        }
+        write_bytes = 0;
+    }
+}
+
 // --------- Error Helper ----------
 
 std::string error_helper::responses_path = "";
@@ -465,8 +488,22 @@ int cgi_helper::wait_data(int readp, int errp) {
     }
 }
 
-void cgi_helper::run_and_send(std::string path, int fd, message_helper * m_help) {
-    auto env = build_evironment(m_help->get_head("method"));
+void cgi_helper::run_and_send(std::string path, int fd, message_helper * m_help, bool post = false) {
+//    auto env = build_evironment(m_help->get_head("method"));
+    std::string r = m_help->get_head("method");
+    std::string args = r.substr(r.find_first_of('?')+1);
+    args = args.substr(0, args.size() - std::string("HTTP/1.1\r\n").size());
+    std::string method = std::string("REQUEST_METHOD=")+r.substr(0, r.find(' '));
+    std::string query_string = std::string("QUERY_STRING=")+args;
+    std::string home = "HOME=/home";
+    const char * const env[4] = { // TODO: добавить больше переменных среды
+        method.c_str(),
+        query_string.c_str(),
+        home.c_str(),
+        NULL
+    };
+
+
     pipes pipfd;
 
     path = isolate(path);
@@ -490,6 +527,11 @@ void cgi_helper::run_and_send(std::string path, int fd, message_helper * m_help)
     identificate(cgipid);
 
     // TODO: сделать отправку пост запроса
+    if(post) {
+        m_help->send_post_data(fd, pipfd.write[1]);
+        std::cout << "Yo" << std::endl;
+    }
+    close(pipfd.write[1]);
 
     int datafd = wait_data(pipfd.read[0], pipfd.err[0]);
 
@@ -497,7 +539,10 @@ void cgi_helper::run_and_send(std::string path, int fd, message_helper * m_help)
         m_help->send_string("HTTP/1.1 200 OK", fd);// TODO: сделать нормальную проверку
         m_help->send_from_fd(pipfd.read[0], fd);
     } else if(datafd == pipfd.err[0]) {
+        std::cout << "Some error" << std::endl;
         // TODO: обработать ошибку
+    } else if(datafd == -1) {
+        std::cout << "-1 Error" << std::endl;
     }
 
     close(pipfd.err[0]);

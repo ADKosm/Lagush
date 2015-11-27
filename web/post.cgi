@@ -6,8 +6,8 @@ import cgi, cgitb
 form = cgi.FieldStorage() 
 
 # Get data from fields
-#first_name = form.getvalue('first_name')
-#last_name  = form.getvalue('last_name')
+first_name = form.getvalue('first_name')
+last_name  = form.getvalue('last_name')
 
 msg = """
 <html>
@@ -16,10 +16,17 @@ msg = """
 </head>
 <body>
 
-<form action="post.cgi" method="post">
-    Your name: <input type="text" name="nam"\><br>
-    Your surname: <input type="text" name="surnam"\><br>
-    <input type="submit" value="Yo">
+"""
+
+msg += "<h2 align = 'center'>Hello %s %s</h2>" % (first_name, last_name)
+
+msg += """
+
+<form action="/post.cgi" method="post">
+First Name: <input type="text" name="first_name"><br />
+Last Name: <input type="text" name="last_name" />
+
+<input type="submit" value="Submit" />
 </form>
 
 </body>
