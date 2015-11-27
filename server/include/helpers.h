@@ -96,9 +96,19 @@ public:
 
     bool is_ok();
     void send_headers(int connfd);
+    void send_from_fd(int fd, int sock);
+    void send_string(std::string text, int sock);
 };
 
 // ----------------------------------------------
+
+struct pipes {
+    int read[2];
+    int write[2];
+    int err[2];
+    pipes();
+    void close_all();
+};
 
 class cgi_helper {
 private:
@@ -110,13 +120,15 @@ private:
     std::string get_real_path(std::string path);
     std::string isolate(std::string path);
     std::string prepare_script(std::string path);
+    const char * const *build_evironment(std::string req);
     void prepare_jail(std::string path);
     void copy_lib(std::string from, std::string to);
     void copy_dir(std::string from, std::string to);
     void copy_devices(std::string path);
-    void cgi_exec(std::string path, const char * const * env);
+    void cgi_exec(std::string path, const char * const *env);
     void identificate(pid_t pid);
     void clear(std::string path);
+    int wait_data(int readp, int errp);
 
 public:
     cgi_helper(std::string raw_ext);

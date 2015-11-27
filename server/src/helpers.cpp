@@ -206,6 +206,25 @@ bool message_helper::is_ok() {
     return _is_ok;
 }
 
+void message_helper::send_from_fd(int fd, int sock) { // readfd[0], fd
+    int BLOCK_SIZE = 8192;
+    char buffer[BLOCK_SIZE];
+    int read_bytes = 0;
+    int write_bytes = 0;
+
+    while( (read_bytes = read(fd, buffer, BLOCK_SIZE)) > 0 ) {
+        while(write_bytes < read_bytes) {
+            write_bytes += send(sock, buffer + write_bytes, read_bytes - write_bytes , 0);
+        }
+        write_bytes = 0;
+    }
+}
+
+void message_helper::send_string(std::string text, int sock) {
+    unsigned int b = 0;
+    while(b < text.size()) b += send(sock, text.c_str() + b, text.size() - b, 0);
+}
+
 // --------- Error Helper ----------
 
 std::string error_helper::responses_path = "";
@@ -410,11 +429,10 @@ void cgi_helper::identificate(pid_t pid) {
     }
 }
 
-void cgi_helper::run_and_send(std::string path, int fd, message_helper * m_help) {
-    std::string r = m_help->get_head("method");
-    std::string args = r.substr(r.find_first_of('?')+1);
+const char * const * cgi_helper::build_evironment(std::string req) {
+    std::string args = req.substr(req.find_first_of('?')+1);
     args = args.substr(0, args.size() - std::string("HTTP/1.1\r\n").size());
-    std::string method = std::string("REQUEST_METHOD=")+r.substr(0, r.find(' '));
+    std::string method = std::string("REQUEST_METHOD=")+req.substr(0, method.find(' '));
     std::string query_string = std::string("QUERY_STRING=")+args;
     std::string home = "HOME=/home";
     const char * const env_var[4] = { // TODO: добавить больше переменных среды
@@ -423,47 +441,68 @@ void cgi_helper::run_and_send(std::string path, int fd, message_helper * m_help)
         home.c_str(),
         NULL
     };
+    return env_var;
+}
 
-    int readfd[2];
-    int cgipid;
+int cgi_helper::wait_data(int readp, int errp) {
+    fd_set rfds;
+    int retval;
 
-    pipe(readfd);
+    FD_ZERO(&rfds);
+    FD_SET(readp, &rfds);
+    FD_SET(errp, &rfds);
+
+    retval = select(std::max(readp, errp)+1, &rfds, NULL, NULL, NULL);
+
+    if(retval) {
+        if(FD_ISSET(readp, &rfds)) {
+            return readp;
+        } else if(FD_ISSET(errp, &rfds)) {
+            return errp;
+        }
+    } else {
+        return -1;
+    }
+}
+
+void cgi_helper::run_and_send(std::string path, int fd, message_helper * m_help) {
+    auto env = build_evironment(m_help->get_head("method"));
+    pipes pipfd;
 
     path = isolate(path);
 
+    int cgipid;
     if( (cgipid = fork()) == 0 ) { // child
-        close(readfd[0]);
 
-        dup2(readfd[1], 1); // перенаправляем вывод
+        dup2(pipfd.write[0], 0); // stdin
+        dup2(pipfd.read[1], 1); // stdout
+        dup2(pipfd.err[1], 2); // stderr
+        pipfd.close_all();
 
-        cgi_exec(path, env_var);
+        cgi_exec(path, env);
 
-        std::cout << "Launching CGI-script is failed" << std::endl;
-        close(readfd[1]);
         exit(0);
     }
-    // parent // TODO: вынести перегон данных из одного дескриптора в другой в отдельный метод
-    close(readfd[1]);
+    close(pipfd.write[0]);
+    close(pipfd.read[1]);
+    close(pipfd.err[1]);
     
     identificate(cgipid);
 
-    std::string ok_stat = "HTTP/1.1 200 OK"; // TODO: сделать нормальную проверку
-    unsigned int b = 0;
-    while(b < ok_stat.size()) b += send(fd, ok_stat.c_str() + b, ok_stat.size() - b, 0);
+    // TODO: сделать отправку пост запроса
 
-    int BLOCK_SIZE = 8192;
-    char buffer[BLOCK_SIZE];
-    int read_bytes = 0;
-    int write_bytes = 0;
+    int datafd = wait_data(pipfd.read[0], pipfd.err[0]);
 
-    while( (read_bytes = read(readfd[0], buffer, BLOCK_SIZE)) > 0 ) {
-        while(write_bytes < read_bytes) {
-            write_bytes += send(fd, buffer + write_bytes, read_bytes - write_bytes , 0);
-        }
-        write_bytes = 0;
+    if(datafd == pipfd.read[0]) {
+        m_help->send_string("HTTP/1.1 200 OK", fd);// TODO: сделать нормальную проверку
+        m_help->send_from_fd(pipfd.read[0], fd);
+    } else if(datafd == pipfd.err[0]) {
+        // TODO: обработать ошибку
     }
 
-    close(readfd[0]);
+    close(pipfd.err[0]);
+    close(pipfd.read[0]);
+    close(pipfd.write[1]);
 
     wait(NULL);
     clear(path);
@@ -580,4 +619,19 @@ std::vector<std::string> cgi_helper::get_dependencies(std::string path) {
         }
     }
     return result;
+}
+
+pipes::pipes() {
+    pipe(read);
+    pipe(write);
+    pipe(err);
+}
+
+void pipes::close_all() {
+    close(read[0]);
+    close(read[1]);
+    close(write[0]);
+    close(write[1]);
+    close(err[0]);
+    close(err[1]);
 }

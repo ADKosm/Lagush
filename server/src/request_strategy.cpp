@@ -33,5 +33,10 @@ void get_request::do_request(server *serv, int connfd) {
 }
 
 void post_request::do_request(server *serv, int connfd) {
-    std::cout << "This is a post request" << std::endl;
+    int ercode;
+    std::string path = serv->file_serv->choose_path(serv->mess_serv->get_path(), ercode);
+    uint64_t len = std::atoi(serv->mess_serv->get_head("Content-Length").c_str());
+
+    std::cout << "Post request: " << path << ' ' << len << std::endl;
+
 }
