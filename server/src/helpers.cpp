@@ -1,4 +1,5 @@
 #include "include/helpers.h"
+#include "include/server.h"
 // ------- Config Helper ----------
 
 config_helper::config_helper() {
@@ -229,7 +230,6 @@ void message_helper::send_post_data(int sock, int fd) {
     unsigned int b = 0;
     while(b < remains.size()) b += write(fd, remains.c_str() + b, remains.size() - b);
     uint64_t size = atoll(get_head("Content-Length").c_str());
-    std::cout << size << ' ' << remains << ' ' << remains.size() << std::endl;
     size-=remains.size();
 
     uint64_t write_bytes = 0;
@@ -277,7 +277,6 @@ socket_reader::socket_reader(int sock_f, bool &ok_flag) {
     int ready = select(sock_fd+1, &rset, NULL, NULL, &message_helper::timelimit);
 
     if(ready == 0) {
-        std::cout << "Time is over!" << std::endl;
         ok_flag = false; // истек лимит ожидания
     } else {
         bytes = recv(sock_fd, buffer, BUFF_SIZE, 0);
@@ -399,8 +398,6 @@ std::string cgi_helper::prepare_script(std::string path) {
 }
 
 void cgi_helper::copy_dir(std::string from, std::string to) {
-    std::cout << from << ' ' << to << std::endl;
-
     DIR * folder = opendir(from.c_str());
     struct dirent * file;
 
@@ -445,7 +442,7 @@ void cgi_helper::identificate(pid_t pid) {
         int status = sigtimedwait(&sigset, &sig, &limit);
 
         if(status == -1) {
-            std::cout << "Can't launch cgi_script! Cgi_module is not responding" << std::endl;
+            server::log->error("Can't launch cgi_script! Cgi_module is not responding");
             exit(0);
         }
         kill(pid, SIGUSR1);
@@ -508,6 +505,8 @@ void cgi_helper::run_and_send(std::string path, int fd, message_helper * m_help,
 
     path = isolate(path);
 
+    server::log->add("Launching script %s", path.c_str());
+
     int cgipid;
     if( (cgipid = fork()) == 0 ) { // child
 
@@ -529,7 +528,6 @@ void cgi_helper::run_and_send(std::string path, int fd, message_helper * m_help,
     // TODO: сделать отправку пост запроса
     if(post) {
         m_help->send_post_data(fd, pipfd.write[1]);
-        std::cout << "Yo" << std::endl;
     }
     close(pipfd.write[1]);
 
@@ -539,10 +537,7 @@ void cgi_helper::run_and_send(std::string path, int fd, message_helper * m_help,
         m_help->send_string("HTTP/1.1 200 OK", fd);// TODO: сделать нормальную проверку
         m_help->send_from_fd(pipfd.read[0], fd);
     } else if(datafd == pipfd.err[0]) {
-        std::cout << "Some error" << std::endl;
         // TODO: обработать ошибку
-    } else if(datafd == -1) {
-        std::cout << "-1 Error" << std::endl;
     }
 
     close(pipfd.err[0]);
@@ -554,6 +549,7 @@ void cgi_helper::run_and_send(std::string path, int fd, message_helper * m_help,
 }
 
 void cgi_helper::prepare_jail(std::string path) {
+    server::log->add("Preapering jail in %s", path.c_str());
     std::vector<std::string> programs = {
          "/bin/bash",
          "/bin/cp",
@@ -597,6 +593,9 @@ void cgi_helper::copy_lib(std::string from, std::string to) {
     struct stat buf;
     int status = stat(to.c_str(), &buf);
     if(status == 0) return;
+
+    server::log->add("Copying %s to %s", from.c_str(), to.c_str());
+
     size_t point = 0;
     while( (point = to.find('/', point+1)) != std::string::npos ) {
         std::string p = to.substr(0, point);

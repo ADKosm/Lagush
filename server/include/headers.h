@@ -16,6 +16,8 @@
 #include <dirent.h>
 #include <sys/mman.h>
 #include <stddef.h>
+#include <stdio.h>
+#include <stdarg.h>
 
 #include <sys/stat.h>
 #include <sys/sendfile.h>

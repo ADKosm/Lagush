@@ -4,6 +4,8 @@
 #define LISTENQ 1024
 #define SA struct sockaddr
 
+logger * server::log = NULL;
+
 server::server() {
     try {
         conf_serv = new config_helper;
@@ -41,7 +43,8 @@ server::~server() {
 void server::start() {
     int listenfd /*слушающий*/, connfd;
     int port = conf_serv->get_iparam("port");
-    struct sockaddr_in servaddr;
+    struct sockaddr_in servaddr, ip_name;
+    socklen_t len = sizeof(ip_name);
 
     listenfd = socket(AF_INET, SOCK_STREAM, 0); // создание нового сокета
     // AF_INET - сокет для интернета
@@ -57,12 +60,17 @@ void server::start() {
     // соединяем
 
     listen(listenfd, LISTENQ);
+
+    server::log->add("Server start on port %d", port);
     // запускаем прослушку
 
     int pid;
 
     for(;;) {
-        connfd = accept(listenfd, (SA *)NULL, NULL);
+        connfd = accept(listenfd, (SA *)&ip_name, &len);
+
+        char buf[20];
+        server::log->add("New connection %s", inet_ntop(AF_INET, &ip_name.sin_addr, buf, sizeof(buf)));
 
         if( (pid = fork()) == 0 ) {
             close(listenfd);
@@ -79,7 +87,6 @@ void server::start() {
 
 
 void server::handle_request(int connfd) {
-    std::cout << "New connection (" << connfd << ')' << std::endl;
 
     mess_serv->read_headers(connfd);
 

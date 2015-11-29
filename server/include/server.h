@@ -12,7 +12,6 @@ protected:
     int port;
     std::string root_path;
 
-    logger* log;
     config_helper* conf_serv;
     file_helper* file_serv;
     message_helper* mess_serv;
@@ -24,6 +23,7 @@ protected:
 public:
     server();
     ~server();
+    static logger* log;
     void start();
 };
 

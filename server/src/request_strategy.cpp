@@ -14,6 +14,9 @@ request_strategy * request_strategy::get_strategy(std::string method) {
 
 
 void get_request::do_request(server *serv, int connfd) {
+
+    server::log->add("GET %s", serv->mess_serv->get_path().c_str());
+
     int ercode;
     std::string path = serv->file_serv->choose_path(serv->mess_serv->get_path(), ercode);
 
@@ -26,18 +29,17 @@ void get_request::do_request(server *serv, int connfd) {
                 ->combine_headers(serv->mess_serv->server_info())
                 ->combine_headers(message_helper::end_of_headers);
 
-        std::cout << serv->mess_serv->response_headers;
         serv->mess_serv->send_headers(connfd);
         serv->file_serv->send_data(path, connfd);
     }
 }
 
 void post_request::do_request(server *serv, int connfd) {
+
+    server::log->add("POST %s", serv->mess_serv->get_path().c_str());
+
     int ercode;
     std::string path = serv->file_serv->choose_path(serv->mess_serv->get_path(), ercode);
-    uint64_t len = std::atoi(serv->mess_serv->get_head("Content-Length").c_str());
-
-    std::cout << "Post request: " << path << ' ' << len << std::endl;
 
     if(serv->cgi_serv->is_cgi(path)) {
         serv->cgi_serv->run_and_send(path, connfd, serv->mess_serv, true);
