@@ -32,4 +32,4 @@
 config
 Makefile
 jail
-log/*
+log/logfile
